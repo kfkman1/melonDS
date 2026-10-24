@@ -423,6 +423,12 @@ MainWindow::MainWindow(int id, EmuInstance* inst, QWidget* parent) :
 
                 actLANStartClient = submenu->addAction("Join LAN game");
                 connect(actLANStartClient, &QAction::triggered, this, &MainWindow::onLANStartClient);
+            }
+            {
+                QMenu * submenu = menu->addMenu("Pokemon Black co-op");
+                connect(submenu->addAction("Host co-op..."), &QAction::triggered, this, &MainWindow::onCoopHost);
+                connect(submenu->addAction("Join co-op..."), &QAction::triggered, this, &MainWindow::onCoopJoin);
+                connect(submenu->addAction("Stop co-op"), &QAction::triggered, this, &MainWindow::onCoopOff);
 
                 /*submenu->addSeparator();
 
@@ -1739,6 +1745,34 @@ void MainWindow::onOpenTitleManager()
 void MainWindow::onMPNewInstance()
 {
     createEmuInstance();
+}
+
+void MainWindow::onCoopHost()
+{
+    bool ok = false;
+    int port = QInputDialog::getInt(this, "Host co-op", "Port (your friend joins this port; UDP):", 47100, 1024, 65535, 1, &ok);
+    if (!ok) return;
+    std::lock_guard<std::mutex> lock(emuInstance->coopMutex);
+    emuInstance->coopRequest = "host " + std::to_string(port);
+}
+
+void MainWindow::onCoopJoin()
+{
+    bool ok = false;
+    QString addr = QInputDialog::getText(this, "Join co-op", "Host address and port (e.g. 100.64.1.2:47100):",
+                                         QLineEdit::Normal, "127.0.0.1:47100", &ok).trimmed();
+    if (!ok || addr.isEmpty()) return;
+    int colon = addr.lastIndexOf(':');
+    QString host = colon > 0 ? addr.left(colon) : addr;
+    int port = colon > 0 ? addr.mid(colon + 1).toInt() : 47100;
+    std::lock_guard<std::mutex> lock(emuInstance->coopMutex);
+    emuInstance->coopRequest = "join " + host.toStdString() + " " + std::to_string(port);
+}
+
+void MainWindow::onCoopOff()
+{
+    std::lock_guard<std::mutex> lock(emuInstance->coopMutex);
+    emuInstance->coopRequest = "off";
 }
 
 void MainWindow::onLANStartHost()

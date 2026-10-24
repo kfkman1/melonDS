@@ -132,6 +132,9 @@ private slots:
     void onOpenTitleManager();
     void onMPNewInstance();
     void onLANStartHost();
+    void onCoopHost();
+    void onCoopJoin();
+    void onCoopOff();
     void onLANStartClient();
     void onNPStartHost();
     void onNPStartClient();

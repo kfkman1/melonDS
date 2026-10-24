@@ -35,6 +35,7 @@
 #include "ArchiveUtil.h"
 #endif
 #include "EmuInstance.h"
+#include <sstream>
 #include "Config.h"
 #include "Platform.h"
 #include "Net.h"
@@ -2269,4 +2270,41 @@ void EmuInstance::animatedROMIcon(const u8 (&data)[8][512], const u16 (&palette)
         for (int j = 0; j < SEQ_DUR(sequence[i]); j++)
             animatedSequenceRef.push_back(i);
     }
+}
+
+
+// ---- bw-coop ----
+void EmuInstance::coopFrame()
+{
+    static bool envChecked = false;
+    if (!envChecked && nds && nds->GetNDSCart())
+    {
+        envChecked = true;   // optional autostart, e.g. BWCOOP="host 47100" or BWCOOP="join 1.2.3.4 47100"
+        if (const char* e = getenv("BWCOOP")) { std::lock_guard<std::mutex> lock(coopMutex); coopRequest = e; }
+    }
+    std::string req;
+    {
+        std::lock_guard<std::mutex> lock(coopMutex);
+        req.swap(coopRequest);
+    }
+    if (coop && coopNDS != nds) { coop.reset(); osdAddMessage(0xFFC040, "Co-op stopped (console reset)"); }
+    if (!req.empty())
+    {
+        coop.reset();
+        if (req != "off" && nds)
+        {
+            coop = std::make_unique<bwcoop::Bridge>(*nds);
+            coopNDS = nds;
+            coop->Log = [this](const std::string& m) { osdAddMessage(0x80FF80, "%s", m.c_str()); };
+            bool ok = coop->Attach();
+            if (ok && globalCfg.GetBool("JIT.Enable"))
+                osdAddMessage(0xFFC040, "bw-coop: JIT is on; co-op is tested with the JIT off");
+            std::istringstream ss(req); std::string mode; ss >> mode;
+            if (ok && mode == "host") { int port = 0; ss >> port; ok = coop->Host(port); }
+            else if (ok && mode == "join") { std::string h; int port = 0; ss >> h >> port; ok = coop->Join(h, port); }
+            if (!ok) coop.reset();
+        }
+        else osdAddMessage(0xFFC040, "Co-op off");
+    }
+    if (coop) coop->OnFrame();
 }

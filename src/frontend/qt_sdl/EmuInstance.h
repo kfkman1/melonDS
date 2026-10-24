@@ -28,6 +28,8 @@
 #include "Window.h"
 #include "Config.h"
 #include "SaveManager.h"
+#include "bwcoop/BWCoop.h"
+#include <mutex>
 
 const int kMaxWindows = 4;
 
@@ -91,6 +93,13 @@ public:
     int getConsoleType() { return consoleType; }
     EmuThread* getEmuThread() { return emuThread; }
     melonDS::NDS* getNDS() { return nds; }
+
+    // bw-coop (Pokemon Black co-op). Requests come from the UI thread; the bridge lives on the emu thread.
+    std::mutex coopMutex;
+    std::string coopRequest;                 // "host <port>", "join <host> <port>", "off"
+    std::unique_ptr<bwcoop::Bridge> coop;
+    melonDS::NDS* coopNDS = nullptr;
+    void coopFrame();
 
     MainWindow* getMainWindow() { return mainWindow; }
     int getNumWindows() { return numWindows; }

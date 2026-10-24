@@ -309,6 +309,7 @@ void EmuThread::run()
             else
             {
                 nlines = emuInstance->nds->RunFrame();
+                emuInstance->coopFrame();
             }
 
             if (emuInstance->ndsSave)

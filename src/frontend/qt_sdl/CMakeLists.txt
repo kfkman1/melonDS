@@ -92,12 +92,17 @@ fix_interface_includes(PkgConfig::SDL2 PkgConfig::LibArchive)
 
 add_compile_definitions(ARCHIVE_SUPPORT_ENABLED)
 
-add_executable(melonDS ${SOURCES_QT_SDL})
+add_executable(melonDS ${SOURCES_QT_SDL} ../../bwcoop/BWCoop.cpp)
 
 add_subdirectory("../../net"
     ${CMAKE_BINARY_DIR}/net)
 
 target_link_libraries(melonDS PRIVATE net-utils)
+# bw-coop bridge (src/bwcoop) talks ENet directly
+if (USE_VCPKG)
+    find_package(unofficial-enet CONFIG REQUIRED)
+    target_link_libraries(melonDS PRIVATE unofficial::enet::enet)
+endif()
 
 if (WIN32)
     target_link_libraries(melonDS PUBLIC opengl32)
