@@ -2298,7 +2298,7 @@ void EmuInstance::coopFrame()
         {
             std::istringstream ss(e); std::string mode, host; ss >> mode;
             MPInterface::Set(MPInterface_LAN);
-            MPInterface::Get().SetRecvTimeout(globalCfg.GetInt("MP.RecvTimeout"));
+            MPInterface::Get().SetRecvTimeout(std::max(globalCfg.GetInt("MP.RecvTimeout"), 150));   // bw-coop: internet round trips
             if (mode == "host") ((LAN&)MPInterface::Get()).StartHost("Host", 2);
             else if (mode == "join") { ss >> host; ((LAN&)MPInterface::Get()).StartClient("Guest", host.c_str()); }
             std::lock_guard<std::mutex> lock(coopMutex); coopRequest = e;

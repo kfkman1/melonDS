@@ -1756,6 +1756,8 @@ void MainWindow::onCoopHost()
     if (!ok) return;
     // battles and trades run over DS local wireless: carry it with melonDS LAN (UDP 7064) to the partner
     setMPInterface(MPInterface_LAN);
+    // over the internet a wireless reply takes a full round trip: wait up to 150 ms for it instead of 25 ms
+    MPInterface::Get().SetRecvTimeout(std::max(MPInterface::Get().GetRecvTimeout(), 150));
     if (!((LAN&)MPInterface::Get()).StartHost("Host", 2))
         QMessageBox::warning(this, "melonDS", "Co-op: could not start the wireless link (UDP port 7064).");
     std::lock_guard<std::mutex> lock(emuInstance->coopMutex);
@@ -1772,6 +1774,7 @@ void MainWindow::onCoopJoin()
     QString host = colon > 0 ? addr.left(colon) : addr;
     int port = colon > 0 ? addr.mid(colon + 1).toInt() : 47100;
     setMPInterface(MPInterface_LAN);
+    MPInterface::Get().SetRecvTimeout(std::max(MPInterface::Get().GetRecvTimeout(), 150));
     if (!((LAN&)MPInterface::Get()).StartClient("Guest", host.toStdString().c_str()))
         QMessageBox::warning(this, "melonDS", "Co-op: could not join the host's wireless link (UDP port 7064).");
     std::lock_guard<std::mutex> lock(emuInstance->coopMutex);
