@@ -20,7 +20,7 @@ namespace melonDS { class NDS; }
 
 namespace bwcoop
 {
-using melonDS::u8; using melonDS::u16; using melonDS::u32; using melonDS::s32;
+using melonDS::u8; using melonDS::u16; using melonDS::u32; using melonDS::s32; using melonDS::u64;
 
 // Wire format (little endian, 36 bytes). Version bump on any change.
 struct PlayerState
@@ -40,6 +40,7 @@ static_assert(sizeof(PlayerState) == 36, "wire size");
 struct Stats
 {
     u32 sent = 0, received = 0, spawns = 0, deletes = 0, commands = 0, teleports = 0, callsBusy = 0;
+    u32 irSent = 0, irRecv = 0, irEvents = 0, invitesSent = 0, invitesRecv = 0;
 };
 
 class Bridge
@@ -54,6 +55,11 @@ public:
     void Disconnect();
 
     void OnFrame();                // call once after every RunFrame()
+    bool StartIR();                // open the game's infrared event (Battle / Trade menu) now
+    // Give this console its own MAC address (firmware + the OS copy). The game rejects a link partner with the
+    // same MAC, and melonDS's generated firmware gives every player 00:09:BF:11:22:33.
+    void SetMac(const u8 mac[6]);
+    void SetIRDelay(int frames) { irDelay = frames; }   // test knob: hold received IR packets this many frames
 
     bool Supported() const { return supported; }
     bool Connected() const;
@@ -81,9 +87,27 @@ private:
     u16 ownLX = 0xFFFF, ownLY = 0xFFFF; u32 ownLFrame = 0; u8 ownFpt = 16;
 
     // injected call state
-    enum class CallKind { None, Spawn, Delete };
+    enum class CallKind { None, Spawn, Delete, IRC };
     CallKind pending = CallKind::None;
     u32 pendingFrames = 0;
+
+    // infrared link
+    struct IRPacket { u32 due; int len; u8 data[0xB8]; };
+    std::deque<IRPacket> irIn;
+    int irDelay = 0;
+    bool irWanted = false;
+    u32 irWantedFrames = 0;
+    bool TryStartIR();
+    // press A facing the partner's trainer -> both players get the game's IR menu
+    bool prevA = false;
+    u32 inviteCooldown = 0;
+    void CheckInteract();
+    void SendInvite(u32 kind);
+    // Exit ordering for the IR menu's wireless session (see ExitGate in BWCoop.cpp)
+    u32 partnerIrcSeq = 0, partnerIrcMax = 0, lastIrcSeqSent = ~0u, exitHold = 0;
+    void ExitGate();
+    void IRSend(const u8* data, int len);
+    int IRRecv(u8* buf, int max);
 
     // network (ENet), opaque
     struct Net;

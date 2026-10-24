@@ -36,6 +36,9 @@
 #endif
 #include "EmuInstance.h"
 #include <sstream>
+#include <random>
+#include "LAN.h"
+#include "MPInterface.h"
 #include "Config.h"
 #include "Platform.h"
 #include "Net.h"
@@ -1736,6 +1739,17 @@ void EmuInstance::customizeFirmware(Firmware& firmware, bool overridesettings) n
     bool rep = false;
     auto& header = firmware.GetHeader();
 
+    // bw-coop: games reject a link partner with the same MAC, and the generated firmware gives every melonDS
+    // user 00:09:BF:11:22:33. Give this installation its own MAC once and keep it.
+    if (overridesettings && localCfg.GetString("Firmware.MAC").empty())
+    {
+        std::random_device rd;
+        char buf[24];
+        snprintf(buf, sizeof buf, "00:09:BF:%02X:%02X:%02X", rd() & 0xFF, rd() & 0xFF, rd() & 0xFF);
+        localCfg.SetString("Firmware.MAC", buf);
+        Config::Save();
+    }
+
     memcpy(&mac, header.MacAddr.data(), sizeof(MacAddress));
 
     if (overridesettings)
@@ -2280,7 +2294,15 @@ void EmuInstance::coopFrame()
     if (!envChecked && nds && nds->GetNDSCart())
     {
         envChecked = true;   // optional autostart, e.g. BWCOOP="host 47100" or BWCOOP="join 1.2.3.4 47100"
-        if (const char* e = getenv("BWCOOP")) { std::lock_guard<std::mutex> lock(coopMutex); coopRequest = e; }
+        if (const char* e = getenv("BWCOOP"))
+        {
+            std::istringstream ss(e); std::string mode, host; ss >> mode;
+            MPInterface::Set(MPInterface_LAN);
+            MPInterface::Get().SetRecvTimeout(globalCfg.GetInt("MP.RecvTimeout"));
+            if (mode == "host") ((LAN&)MPInterface::Get()).StartHost("Host", 2);
+            else if (mode == "join") { ss >> host; ((LAN&)MPInterface::Get()).StartClient("Guest", host.c_str()); }
+            std::lock_guard<std::mutex> lock(coopMutex); coopRequest = e;
+        }
     }
     std::string req;
     {

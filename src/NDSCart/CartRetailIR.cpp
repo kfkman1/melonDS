@@ -68,10 +68,22 @@ void CartRetailIR::DoSavestate(Savestate* file)
     file->Var8(&IRCmd);
 }
 
+std::function<void(const u8*, int)> g_IRSend;
+std::function<int(u8*, int)> g_IRRecv;
+
 void CartRetailIR::SPISelect()
 {
     CartRetail::SPISelect();
     IRPos = 0;
+    IRLen = 0;
+}
+
+void CartRetailIR::SPIRelease()
+{
+    // bw-coop: a send command transmits its bytes as one IR packet when the transfer ends
+    if (IRCmd == 0x02 && IRPos > 1 && g_IRSend) g_IRSend(IRBuf, IRLen);
+    IRLen = 0;
+    CartRetail::SPIRelease();
 }
 
 u8 CartRetailIR::SPITransmitReceive(u8 val)
@@ -83,13 +95,26 @@ u8 CartRetailIR::SPITransmitReceive(u8 val)
         return 0;
     }
 
-    // TODO: emulate actual IR comm
-
-    u8 ret;
+    u8 ret = 0;
     switch (IRCmd)
     {
     case 0x00: // pass-through
         ret = CartRetail::SPITransmitReceive(val);
+        break;
+
+    case 0x01: // receive: count byte, then the received bytes
+        if (IRPos == 1)
+        {
+            IRLen = g_IRRecv ? g_IRRecv(IRBuf, sizeof(IRBuf)) : 0;
+            if (IRLen < 0 || IRLen > 0xB5) IRLen = 0;
+            ret = (u8)IRLen;
+        }
+        else
+            ret = (IRPos - 2 < (u32)IRLen) ? IRBuf[IRPos - 2] : 0;
+        break;
+
+    case 0x02: // send: collect the bytes of one IR packet
+        if (IRLen < (int)sizeof(IRBuf)) IRBuf[IRLen++] = val;
         break;
 
     case 0x08: // ID
@@ -100,7 +125,6 @@ u8 CartRetailIR::SPITransmitReceive(u8 val)
     IRPos++;
     return ret;
 }
-
 
 }
 

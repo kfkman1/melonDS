@@ -23,11 +23,15 @@
 
 namespace melonDS
 {
+extern bool g_WifiAnyChannel;   // bw-coop: accept wireless frames on any channel
+
 class WifiAP;
 class NDS;
 class Wifi
 {
 public:
+    // bw-coop: true while this console is the parent (host) of a local-wireless MP session
+    bool IsMPHost() const { return IsMP && !IsMPClient; }
 
     enum
     {

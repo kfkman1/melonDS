@@ -20,9 +20,15 @@
 #define NDSCART_CARTRETAILIR_H
 
 #include "CartRetail.h"
+#include <functional>
 
 namespace melonDS::NDSCart
 {
+
+// bw-coop: optional infrared link. When set, the IR cart sends each transmitted transfer as one packet
+// through g_IRSend and fills receive transfers from g_IRRecv (returns length, 0 = nothing received).
+extern std::function<void(const u8* data, int len)> g_IRSend;
+extern std::function<int(u8* buf, int max)> g_IRRecv;
 
 // CartRetailIR -- SPI IR device and SRAM
 class CartRetailIR : public CartRetail
@@ -37,12 +43,15 @@ public:
     void DoSavestate(Savestate* file) override;
 
     void SPISelect() override;
+    void SPIRelease() override;
     u8 SPITransmitReceive(u8 val) override;
 
 private:
     u32 IRVersion = 0;
     u8 IRCmd = 0;
     u32 IRPos = 0;
+    u8 IRBuf[0xB8] {};   // bw-coop: current IR transfer
+    int IRLen = 0;
 };
 
 }

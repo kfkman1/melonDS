@@ -1561,6 +1561,8 @@ void Wifi::MPClientReplyRX(int client)
     StartRX();
 }
 
+bool g_WifiAnyChannel = false;
+
 bool Wifi::CheckRX(int type) // 0=regular 1=MP replies 2=MP host frames
 {
     if (IOPORT(W_PowerState) & (1<<9))
@@ -1611,7 +1613,9 @@ bool Wifi::CheckRX(int type) // 0=regular 1=MP replies 2=MP host frames
         }
 
         chan = RXBuffer[9];
-        if (chan != CurChannel || CurChannel == 0)
+        // bw-coop: with exactly two consoles linked over the network, accept frames on any channel. The two
+        // emulators are not in lockstep, so a child can transmit or listen on a scan channel the parent is not on.
+        if ((chan != CurChannel && !g_WifiAnyChannel) || CurChannel == 0)
         {
             Log(LogLevel::Debug, "received frame but bad channel %d (expected %d)\n", chan, CurChannel);
             continue;

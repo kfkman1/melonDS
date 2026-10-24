@@ -18,6 +18,8 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <deque>
 
 #ifdef __WIN32__
     #include <winsock2.h>
@@ -47,6 +49,11 @@
 
 namespace melonDS
 {
+// bw-coop: how long (ms) a received frame may wait in the queue before it is dropped as stale. Upstream uses 16;
+// two emulators linked over the internet (or a parent briefly powering its transceiver down) need more slack.
+u32 g_LANStaleMs = 16;
+bool g_LANKeepDisconnect = false;
+
 
 const u32 kDiscoveryMagic = 0x444E414C; // LAND
 const u32 kLANMagic = 0x504E414C; // LANP
@@ -811,8 +818,20 @@ void LAN::ProcessLAN(int type)
         MPPacketHeader* header = (MPPacketHeader*)&enetpacket->data[0];
         u32 packettime = header->Magic;
 
-        if ((packettime > time_last) || (packettime < (time_last - 16)))
+        // bw-coop: connection management frames (auth, assoc, deauth, disassoc: everything that is not a beacon)
+        // must never be lost to the staleness check. A console that was not polling at that moment would otherwise
+        // fail to connect, or wait forever for a session its partner has already closed.
+        bool keep = false;
+        if (g_LANKeepDisconnect && header->Type == 0 && enetpacket->dataLength >= sizeof(MPPacketHeader) + 13)
         {
+            u8 fc = enetpacket->data[sizeof(MPPacketHeader) + 12];
+            keep = (fc != 0x80);
+        }
+        if (!keep && ((packettime > time_last) || (packettime < (time_last - g_LANStaleMs))))
+        {
+            if (enetpacket->dataLength >= sizeof(MPPacketHeader) + 13)
+                Platform::Log(Platform::LogLevel::Debug, "LAN: dropping stale packet type %d fc=%02X age=%u\n", header->Type & 0xFFFF,
+                    enetpacket->data[sizeof(MPPacketHeader) + 12], time_last - packettime);
             RXQueue.pop();
             enet_packet_destroy(enetpacket);
         }
@@ -834,8 +853,52 @@ void LAN::ProcessLAN(int type)
         }
     }
 
-    int timeout = (type == 2) ? MPRecvTimeout : 0;
+    int timeout = (type == 2) ? RecvTimeout : 0;   // bw-coop: honour SetRecvTimeout (was the fixed MPRecvTimeout)
     time_last = (u32)Platform::GetMSCount();
+
+    // bw-coop test option: MELONDS_LAN_LATENCY_MS holds every received MP frame for that long before the emulator
+    // can see it (one-way latency, so a round trip costs twice that). Off unless the variable is set.
+    static int s_latency = -1;
+    if (s_latency < 0) { const char* l = getenv("MELONDS_LAN_LATENCY_MS"); s_latency = l ? atoi(l) : 0; }
+    if (s_latency > 0)
+    {
+        static std::deque<ENetPacket*> delayed;
+        u32 deadline = time_last + timeout;
+        for (;;)
+        {
+            u32 now = (u32)Platform::GetMSCount();
+            while (!delayed.empty() && ((MPPacketHeader*)delayed.front()->data)->Magic <= now)
+            {
+                ((MPPacketHeader*)delayed.front()->data)->Magic = now;   // "received" now, for the staleness check
+                RXQueue.push(delayed.front());
+                delayed.pop_front();
+            }
+            if (!RXQueue.empty() && type != 0) return;
+
+            ENetEvent ev;
+            int wait = (now < deadline) ? 1 : 0;
+            if (enet_host_service(Host, &ev, wait) > 0)
+            {
+                if (ev.type == ENET_EVENT_TYPE_RECEIVE && ev.channelID == Chan_MP)
+                {
+                    MPPacketHeader* header = (MPPacketHeader*)&ev.packet->data[0];
+                    if (ev.packet->dataLength < sizeof(MPPacketHeader) || header->Magic != 0x4946494E ||
+                        header->SenderID == MyPlayer.ID)
+                        enet_packet_destroy(ev.packet);
+                    else
+                    {
+                        header->Magic = (u32)Platform::GetMSCount() + s_latency;
+                        ev.packet->userData = ev.peer;
+                        delayed.push_back(ev.packet);
+                    }
+                }
+                else
+                    ProcessEvent(ev);
+                continue;
+            }
+            if ((u32)Platform::GetMSCount() >= deadline) return;
+        }
+    }
 
     ENetEvent event;
     while (enet_host_service(Host, &event, timeout) > 0)

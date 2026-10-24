@@ -41,6 +41,9 @@
 
 namespace melonDS
 {
+extern u32 g_LANStaleMs;
+extern bool g_LANKeepDisconnect;
+
 
 class LAN : public MPInterface
 {

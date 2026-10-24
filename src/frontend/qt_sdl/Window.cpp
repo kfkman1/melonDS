@@ -34,6 +34,8 @@
 #include <QMimeDatabase>
 #include <QFileDialog>
 #include <QInputDialog>
+#include "LAN.h"
+#include "MPInterface.h"
 #include <QPaintEvent>
 #include <QPainter>
 #include <QKeyEvent>
@@ -1752,6 +1754,10 @@ void MainWindow::onCoopHost()
     bool ok = false;
     int port = QInputDialog::getInt(this, "Host co-op", "Port (your friend joins this port; UDP):", 47100, 1024, 65535, 1, &ok);
     if (!ok) return;
+    // battles and trades run over DS local wireless: carry it with melonDS LAN (UDP 7064) to the partner
+    setMPInterface(MPInterface_LAN);
+    if (!((LAN&)MPInterface::Get()).StartHost("Host", 2))
+        QMessageBox::warning(this, "melonDS", "Co-op: could not start the wireless link (UDP port 7064).");
     std::lock_guard<std::mutex> lock(emuInstance->coopMutex);
     emuInstance->coopRequest = "host " + std::to_string(port);
 }
@@ -1765,6 +1771,9 @@ void MainWindow::onCoopJoin()
     int colon = addr.lastIndexOf(':');
     QString host = colon > 0 ? addr.left(colon) : addr;
     int port = colon > 0 ? addr.mid(colon + 1).toInt() : 47100;
+    setMPInterface(MPInterface_LAN);
+    if (!((LAN&)MPInterface::Get()).StartClient("Guest", host.toStdString().c_str()))
+        QMessageBox::warning(this, "melonDS", "Co-op: could not join the host's wireless link (UDP port 7064).");
     std::lock_guard<std::mutex> lock(emuInstance->coopMutex);
     emuInstance->coopRequest = "join " + host.toStdString() + " " + std::to_string(port);
 }
